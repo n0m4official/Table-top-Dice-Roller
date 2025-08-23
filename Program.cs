@@ -1,118 +1,163 @@
 ﻿using System;
 using System.Security.Cryptography;
-using System.Text.RegularExpressions;
 using System.Threading;
+using System.Linq;
+using System.Collections.Generic;
 
 class DiceRoller
 {
-	private static Random rng;
+    private static readonly RandomNumberGenerator rng = RandomNumberGenerator.Create();
 
-	static DiceRoller()
-	{
-		long seed = DateTime.Now.Ticks
-					^ Environment.TickCount
-					^ System.Diagnostics.Process.GetCurrentProcess().Id
-					^ (Environment.WorkingSet * 17);
+    // Roll multiple dice and return results
+    public static int[] RollMultiple(int count, int sides)
+    {
+        int[] results = new int[count];
+        for (int i = 0; i < count; i++)
+            results[i] = RandomInt(1, sides);
+        return results;
+    }
 
-		using (var crypto = RandomNumberGenerator.Create())
-		{
-			byte[] bytes = new byte[8];
-			crypto.GetBytes(bytes);
-			seed ^= BitConverter.ToInt64(bytes, 0);
-		}
+    private static int RandomInt(int min, int max)
+    {
+        return RandomNumberGenerator.GetInt32(min, max + 1);
+    }
 
-		rng = new Random((int)(seed & 0xFFFFFFFF));
-	}
+    // ASCII faces for D6
+    private static readonly string[][] DiceFaces = new string[][]
+    {
+        null,
+        new string[]{ "+-----+", "|     |", "|  *  |", "|     |", "+-----+" },
+        new string[]{ "+-----+", "|*    |", "|     |", "|    *|", "+-----+" },
+        new string[]{ "+-----+", "|*    |", "|  *  |", "|    *|", "+-----+" },
+        new string[]{ "+-----+", "|*   *|", "|     |", "|*   *|", "+-----+" },
+        new string[]{ "+-----+", "|*   *|", "|  *  |", "|*   *|", "+-----+" },
+        new string[]{ "+-----+", "|*   *|", "|*   *|", "|*   *|", "+-----+" },
+    };
 
-	public static int Roll(int sides)
-	{
-		// Shake animation
-		Console.Write("Rolling");
-		for (int i = 0; i < 5; i++)
-		{
-			Console.Write(".");
-			Thread.Sleep(rng.Next(50, 200));
-		}
-		Console.WriteLine();
+    // Animate D6 dice
+    public static void AnimateDice(int[] finalResults)
+    {
+        int diceCount = finalResults.Length;
+        int[] current = new int[diceCount];
 
-		return rng.Next(1, sides + 1);
-	}
+        for (int i = 0; i < diceCount; i++)
+            current[i] = RandomInt(1, 6);
 
-	public static void ShowDiceFace(int sides, int value)
-	{
-		// Only ASCII faces for D6; other dice types just show the number
-		if (sides == 6)
-		{
-			string[] diceFace = value switch
-			{
-				1 => new string[] { "+-----+", "|     |", "|  *  |", "|     |", "+-----+" },
-				2 => new string[] { "+-----+", "|*    |", "|     |", "|    *|", "+-----+" },
-				3 => new string[] { "+-----+", "|*    |", "|  *  |", "|    *|", "+-----+" },
-				4 => new string[] { "+-----+", "|*   *|", "|     |", "|*   *|", "+-----+" },
-				5 => new string[] { "+-----+", "|*   *|", "|  *  |", "|*   *|", "+-----+" },
-				6 => new string[] { "+-----+", "|*   *|", "|*   *|", "|*   *|", "+-----+" },
-				_ => null
-			};
+        // Stop dice left to right
+        for (int stopIndex = 0; stopIndex < diceCount; stopIndex++)
+        {
+            int frames = 10 + stopIndex * 2;
+            for (int f = 0; f < frames; f++)
+            {
+                Console.Clear();
+                for (int i = stopIndex; i < diceCount; i++)
+                    current[i] = RandomInt(1, 6);
+                DrawDiceGrid(current, 6); // 6 per row
+                Thread.Sleep(RandomInt(50, 120));
+            }
+            current[stopIndex] = finalResults[stopIndex]; // lock final value
+        }
 
-			if (diceFace != null)
-			{
-				foreach (var line in diceFace)
-					Console.WriteLine(line);
-			}
-		}
-		else
-		{
-			Console.WriteLine($"Result: {value}");
-		}
-	}
+        // Final display
+        Console.Clear();
+        DrawDiceGrid(finalResults, 6);
+    }
+
+    // Draw dice in a grid with n dice per row
+    private static void DrawDiceGrid(int[] dice, int perRow)
+    {
+        int totalDice = dice.Length;
+        int rowsNeeded = (int)Math.Ceiling(totalDice / (double)perRow);
+
+        for (int r = 0; r < rowsNeeded; r++)
+        {
+            int start = r * perRow;
+            int end = Math.Min(start + perRow, totalDice);
+
+            for (int line = 0; line < 5; line++) // each die has 5 lines
+            {
+                for (int d = start; d < end; d++)
+                {
+                    string[] face = DiceFaces[dice[d]];
+                    Console.Write(face[line]);
+                    Console.Write("  "); // spacing
+                }
+                Console.WriteLine();
+            }
+            Console.WriteLine(); // space between rows
+        }
+    }
 }
 
 class Program
 {
-	static void Main()
-	{
-		Console.WriteLine("Advanced Tabletop Dice Roller!");
-		Console.WriteLine("Format: NDx+M (e.g., 3D20+5) or 'q' to quit.");
-		Console.WriteLine("Supported dice: D3, D4, D6, D8, D10, D12, D20, D100\n");
+    static void Main()
+    {
+        Console.WriteLine("Dynamic Tabletop Dice Roller!");
+        Console.WriteLine("Format: NDx+M (e.g., 3D6+2) or 'q' to quit.");
+        Console.WriteLine("Supported dice: D3, D4, D6, D8, D10, D12, D20, D100\n");
 
-		while (true)
-		{
-			Console.Write("Enter your roll: ");
-			string input = Console.ReadLine().Trim().ToUpper();
+        while (true)
+        {
+            Console.Write("Enter your roll: ");
+            string input = Console.ReadLine()?.Trim().ToUpper();
 
-			if (input == "Q") break;
+            if (string.IsNullOrWhiteSpace(input) || input == "Q") break;
 
-			var match = Regex.Match(input, @"^(\d+)D(\d+)([+-]\d+)?$");
-			if (!match.Success)
-			{
-				Console.WriteLine("Invalid format. Example: 2D6+1");
-				continue;
-			}
+            var match = System.Text.RegularExpressions.Regex.Match(input, @"^(\d+)D(\d+)([+-]\d+)?$");
+            if (!match.Success)
+            {
+                Console.WriteLine("Invalid format. Example: 2D6+1");
+                continue;
+            }
 
-			int count = int.Parse(match.Groups[1].Value);
-			int sides = int.Parse(match.Groups[2].Value);
-			int modifier = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
+            if (!int.TryParse(match.Groups[1].Value, out int count) ||
+                !int.TryParse(match.Groups[2].Value, out int sides))
+            {
+                Console.WriteLine("Invalid numbers entered.");
+                continue;
+            }
 
-			if (!new int[] { 3, 4, 6, 8, 10, 12, 20, 100 }.Contains(sides))
-			{
-				Console.WriteLine("Unsupported dice type. Use 3, 4, 6, 8, 10, 12, 20, or 100.");
-				continue;
-			}
+            if (count <= 0 || count > 100)
+            {
+                Console.WriteLine("You can roll between 1 and 100 dice at a time.");
+                continue;
+            }
 
-			int total = 0;
-			Console.WriteLine($"\nRolling {count}D{sides}{(modifier != 0 ? modifier.ToString() : "")}:");
+            int modifier = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
 
-			for (int i = 0; i < count; i++)
-			{
-				int roll = DiceRoller.Roll(sides);
-				total += roll;
-				DiceRoller.ShowDiceFace(sides, roll);
-			}
+            int[] allowedDice = { 3, 4, 6, 8, 10, 12, 20, 100 };
+            if (Array.IndexOf(allowedDice, sides) == -1)
+            {
+                Console.WriteLine("Unsupported dice type. Use 3,4,6,8,10,12,20,100.");
+                continue;
+            }
 
-			total += modifier;
-			Console.WriteLine($"\nTotal (with modifier): {total}");
-		}
+            int[] rolls = DiceRoller.RollMultiple(count, sides);
 
-		Console.WriteLine("Thanks for rolling! Goodbye.");
-	}
+            // Animate D6 dice if applicable
+            if (sides == 6)
+                DiceRoller.AnimateDice(rolls);
+            else
+            {
+                Console.Clear();
+                Console.WriteLine("Dice results: " + string.Join(", ", rolls));
+            }
+
+            // Calculate total
+            int total = rolls.Sum() + modifier;
+            Console.WriteLine($"\nTotal (with modifier): {total}");
+
+            // Breakdown of each number rolled
+            var breakdown = rolls.GroupBy(x => x)
+                                 .OrderBy(g => g.Key)
+                                 .Select(g => $"{g.Key}: {g.Count()}");
+            Console.WriteLine("Roll breakdown: " + string.Join(", ", breakdown));
+
+            Console.WriteLine("\nPress Enter to roll again...");
+            Console.ReadLine();
+        }
+
+        Console.WriteLine("Thanks for rolling! Goodbye.");
+    }
 }
